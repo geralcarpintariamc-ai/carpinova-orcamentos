@@ -385,14 +385,12 @@ function detectarCabecalho(linhas) {
 // deteta a última linha "de dados": segue enquanto encontra descrição + quantidade válida;
 // para depois de 3 linhas seguidas que pareçam nota/subtotal/rodapé (sem quantidade válida)
 function detectarFimDados(linhas, headerIdx, colDesc, colQtd) {
-  let vazias = 0;
   let ultimaValida = headerIdx;
   for (let i = headerIdx + 1; i < linhas.length; i++) {
     const desc = (linhas[i][colDesc] || "").toString().trim();
     const qtdVal = colQtd >= 0 ? num(linhas[i][colQtd]) : 1;
     const valido = desc && qtdVal > 0;
-    if (valido) { ultimaValida = i; vazias = 0; }
-    else { vazias++; if (vazias >= 3) break; }
+    if (valido) ultimaValida = i;
   }
   return ultimaValida;
 }
@@ -407,17 +405,30 @@ function detectarColuna(cabecalho, padroes) {
   return -1;
 }
 
+function melhorFolha(workbook) {
+  let melhorNome = workbook.SheetNames[0], melhorPontos = -1;
+  workbook.SheetNames.forEach((nome) => {
+    const linhas = XLSX.utils.sheet_to_json(workbook.Sheets[nome], { header: 1, defval: "" });
+    const idx = detectarCabecalho(linhas);
+    const pontos = pontuarLinhaCabecalho(linhas[idx] || []);
+    if (pontos > melhorPontos) { melhorPontos = pontos; melhorNome = nome; }
+  });
+  return melhorNome;
+}
+
 function importarExcel(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const workbook = XLSX.read(e.target.result, { type: "array" });
       if (!workbook.SheetNames.length) { mostrarImportStatus("Ficheiro vazio ou ilegível."); return; }
-      importState = { workbook, sheetName: workbook.SheetNames[0] };
+      importState = { workbook, sheetName: melhorFolha(workbook), fileName: file.name };
       carregarFolhaImportacao();
       preencherSelectSheet();
       mostrarImportStatus("");
-      document.getElementById("importMapWrap").hidden = false;
+      document.getElementById("importAjustar").hidden = true;
+      document.getElementById("btnToggleAjustar").textContent = "⚙ A app enganou-se? Ajustar folha/colunas";
+      document.getElementById("importModalBackdrop").hidden = false;
     } catch (err) {
       mostrarImportStatus("Não foi possível ler este ficheiro.");
     }
@@ -479,6 +490,8 @@ function atualizarPreviewImportacao() {
   }
   importState.selecionadas = new Set(importState.candidatas);
   document.getElementById("mapFiltro").value = "";
+  document.getElementById("importResumo").textContent =
+    `${importState.fileName || "ficheiro"} — folha "${importState.sheetName}", ${importState.candidatas.length} item(ns) encontrados a partir da linha ${headerIdx + 2}.`;
   renderChecklistImportacao();
 }
 
@@ -588,14 +601,14 @@ function confirmarImportacao() {
     importadas++;
   });
   atualizar();
-  document.getElementById("importMapWrap").hidden = true;
+  document.getElementById("importModalBackdrop").hidden = true;
   document.getElementById("fileExcel").value = "";
   importState = null;
   mostrarImportStatus(importadas ? `✓ ${importadas} linha(s) importada(s) — falta preencher os preços.` : "Nenhuma linha selecionada.");
 }
 
 function cancelarImportacao() {
-  document.getElementById("importMapWrap").hidden = true;
+  document.getElementById("importModalBackdrop").hidden = true;
   document.getElementById("fileExcel").value = "";
   importState = null;
   mostrarImportStatus("");
@@ -918,6 +931,14 @@ function ligarEventos() {
   document.getElementById("btnDesmarcarVisiveis").addEventListener("click", () => marcarDesmarcarVisiveis(false));
   document.getElementById("btnConfirmarImport").addEventListener("click", confirmarImportacao);
   document.getElementById("btnCancelarImport").addEventListener("click", cancelarImportacao);
+  document.getElementById("btnFecharModal").addEventListener("click", cancelarImportacao);
+  document.getElementById("btnToggleAjustar").addEventListener("click", () => {
+    const painel = document.getElementById("importAjustar");
+    painel.hidden = !painel.hidden;
+    document.getElementById("btnToggleAjustar").textContent = painel.hidden
+      ? "⚙ A app enganou-se? Ajustar folha/colunas"
+      : "⚙ Esconder ajustes";
+  });
   document.getElementById("btnMoFabrico").addEventListener("click", () => adicionarLinhaMO("MO Fabricação", MO_FABRICO_HORA, REND_FABRICO));
   document.getElementById("btnMoMontagem").addEventListener("click", () => adicionarLinhaMO("MO Montagem", MO_MONTAGEM_HORA, REND_MONTAGEM));
   document.getElementById("btnAdicionarLinha").addEventListener("click", adicionarLinhaManual);

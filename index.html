@@ -61,9 +61,8 @@
     <section class="card import-card">
       <h2>Importar mapa de quantidades (Excel)</h2>
       <p class="hint">
-        Aceita um .xlsx/.xls. A app tenta adivinhar a linha de cabeçalho e as colunas de
-        Descrição/Quantidade/Unidade — depois mostra uma pré-visualização para confirmares ou
-        corrigires antes de importar linha a linha.
+        Aceita um .xlsx/.xls, mesmo com várias folhas ou centenas de linhas. A app deteta
+        automaticamente a tabela e mostra-te o que encontrou para escolheres o que importar.
       </p>
       <div class="config-row">
         <label class="btn-outline file-label">📄 Escolher ficheiro Excel
@@ -71,10 +70,20 @@
         </label>
         <span id="importStatus" class="feedback"></span>
       </div>
+    </section>
 
-      <div id="importMapWrap" class="import-map" hidden>
-        <div class="hint">Confirma a folha, a linha de cabeçalho e as colunas — ajusta se a app adivinhou mal. Depois escolhe em baixo exatamente que linhas queres importar (útil quando o mapa tem outras especialidades misturadas).</div>
-        <div class="import-map-grid">
+    <div id="importModalBackdrop" class="import-modal-backdrop" hidden>
+      <div class="import-modal">
+        <div class="import-modal-header">
+          <div>
+            <div class="import-modal-title">Escolher itens a importar</div>
+            <div id="importResumo" class="import-modal-resumo"></div>
+          </div>
+          <button id="btnFecharModal" class="modal-close" aria-label="Fechar">✕</button>
+        </div>
+
+        <button id="btnToggleAjustar" class="link-ajustar">⚙ A app enganou-se? Ajustar folha/colunas</button>
+        <div id="importAjustar" class="import-map-grid" hidden>
           <div class="field"><label>Folha</label><select id="mapSheet"></select></div>
           <div class="field"><label>Linha de cabeçalho</label><select id="mapHeaderRow"></select></div>
           <div class="field"><label>Linha final (opcional)</label><select id="mapLastRow"></select></div>
@@ -84,19 +93,21 @@
         </div>
 
         <div class="config-row import-filtro-row">
-          <input id="mapFiltro" placeholder="Filtrar por palavra (ex: porta, roupeiro, armário) para marcar/desmarcar em massa" />
-          <button id="btnMarcarVisiveis" class="btn-outline">✓ Marcar visíveis</button>
-          <button id="btnDesmarcarVisiveis" class="btn-outline">✕ Desmarcar visíveis</button>
+          <input id="mapFiltro" placeholder="🔍 Escreve uma palavra (ex: elétrico) para marcar/desmarcar essas linhas em massa" />
+          <button id="btnMarcarVisiveis" class="btn-outline">✓ Marcar</button>
+          <button id="btnDesmarcarVisiveis" class="btn-outline">✕ Desmarcar</button>
         </div>
-        <div id="importContagem" class="hint"></div>
         <div id="importPreview" class="import-preview"></div>
 
-        <div class="config-row">
-          <button id="btnConfirmarImport" class="btn-primary" style="margin-top:0">Importar linhas selecionadas</button>
-          <button id="btnCancelarImport" class="btn-outline">Cancelar</button>
+        <div class="import-modal-footer">
+          <div id="importContagem" class="hint"></div>
+          <div class="import-modal-footer-btns">
+            <button id="btnCancelarImport" class="btn-outline">Cancelar</button>
+            <button id="btnConfirmarImport" class="btn-primary" style="margin-top:0">Importar selecionadas</button>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
 
     <section class="card mo-card">
       <h2>Adicionar mão de obra a partir de área</h2>
