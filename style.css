@@ -85,12 +85,54 @@ h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
 
 .geral {
   display: grid;
-  grid-template-columns: 1fr 2fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
+.geral .field.wide { grid-column: span 2; }
 .geral .checkbox-field { grid-column: 1 / -1; }
 .geral .checkbox-field label { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-soft); text-transform: none; letter-spacing: 0; }
+
+.import-card, .mo-card, .linha-form-card, .bulk-card { margin-bottom: 16px; }
+.import-card h2, .mo-card h2, .linha-form-card h2 {
+  font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px;
+}
+.hint { font-size: 12px; color: var(--ink-soft); margin: 0 0 10px; line-height: 1.5; }
+
+.linha-form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1.4fr 1fr 0.8fr 0.8fr 1fr;
+  gap: 10px;
+  align-items: end;
+}
+.linha-form-grid .field label { margin-top: 0; }
+@media (max-width: 900px) { .linha-form-grid { grid-template-columns: 1fr 1fr; } }
+
+.mo-card .config-row { align-items: end; flex-wrap: wrap; }
+.mo-card .field { min-width: 120px; }
+
+.bulk-card .config-row { align-items: center; }
+.bulk-card select, .bulk-card input { max-width: 160px; }
+
+.tabela-wrap { overflow-x: auto; padding: 0; margin-bottom: 14px; }
+.tabela-linhas { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tabela-linhas th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-faint); padding: 10px 8px; border-bottom: 2px solid var(--ink);
+  white-space: nowrap;
+}
+.tabela-linhas td { padding: 6px 8px; border-bottom: 1px solid #EDE7DA; vertical-align: middle; }
+.tabela-linhas input, .tabela-linhas select {
+  padding: 5px 6px; font-size: 12.5px; min-width: 0;
+}
+.tabela-linhas .col-desc input { width: 100%; min-width: 160px; }
+.tabela-linhas .col-num input { width: 70px; text-align: right; }
+.tabela-linhas .col-total { font-family: ui-monospace, monospace; font-weight: 600; white-space: nowrap; text-align: right; }
+.tabela-linhas .col-remove button {
+  background: none; border: none; color: var(--rust); cursor: pointer; font-size: 15px; padding: 2px 6px;
+}
+.tabela-linhas .col-remove button:hover { color: var(--rust-dark); }
+.tabela-linhas tr.sem-preco td { background: #FBF3E9; }
 
 .field label, .form-card label {
   display: block;

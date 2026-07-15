@@ -15,7 +15,7 @@
       <div>
         <div class="eyebrow">✦ Carpinova · Pátio Exímio, Lda</div>
         <h1>Gerador de Orçamentos</h1>
-        <p class="sub">Material, mão de obra e margem — calculados automaticamente pela tua metodologia.</p>
+        <p class="sub">Ficha de Custo Interno e Proposta Comercial no formato Carpinova — a partir de linhas manuais ou de um mapa de quantidades importado.</p>
       </div>
       <button id="btnNovo" class="btn-ghost">↺ Novo orçamento</button>
     </header>
@@ -44,88 +44,142 @@
         <label>Validade (dias)</label>
         <input id="validade" class="mono" value="8" />
       </div>
+      <div class="field">
+        <label>Margem (tipo de cliente)</label>
+        <select id="margemGeral"></select>
+      </div>
+      <div class="field wide">
+        <label>Descrição geral (aparece na Proposta Comercial)</label>
+        <input id="descricaoGeral" placeholder="ex: Fornecimento e montagem de carpintaria conforme mapa de quantidades" />
+      </div>
       <div class="field checkbox-field">
         <label><input type="checkbox" id="autoliq" /> Autoliquidação de IVA (obras públicas/empreitadas)</label>
       </div>
     </section>
 
-    <div class="columns">
-      <!-- Formulário -->
-      <section class="card form-card">
-        <h2>Adicionar artigo</h2>
+    <section class="card import-card">
+      <h2>Importar mapa de quantidades (Excel)</h2>
+      <p class="hint">
+        Aceita um .xlsx/.xls com colunas de Descrição, Quantidade e Unidade (em qualquer ordem —
+        a app tenta identificá-las automaticamente). As linhas entram como "Material" com custo
+        unitário em branco, prontas para preencheres os preços.
+      </p>
+      <div class="config-row">
+        <label class="btn-outline file-label">📄 Escolher ficheiro Excel
+          <input type="file" id="fileExcel" accept=".xlsx,.xls" hidden />
+        </label>
+        <span id="importStatus" class="feedback"></span>
+      </div>
+    </section>
 
-        <label>Descrição</label>
-        <input id="f-descricao" placeholder="ex: Roupeiro quarto 1, 2 portas" />
-
-        <div class="row2">
-          <div>
-            <label>Área (m²)</label>
-            <input id="f-area" class="mono" placeholder="0.00" />
-          </div>
-          <div>
-            <label>Quantidade</label>
-            <input id="f-qtd" class="mono" value="1" />
-          </div>
+    <section class="card mo-card">
+      <h2>Adicionar mão de obra a partir de área</h2>
+      <div class="config-row">
+        <div class="field">
+          <label>Área (m²)</label>
+          <input id="moArea" class="mono" placeholder="0.00" />
         </div>
+        <button id="btnMoFabrico" class="btn-outline">+ MO Fabricação (24,07€/h · 1,6243 m²/h)</button>
+        <button id="btnMoMontagem" class="btn-outline">+ MO Montagem (22,87€/h · 2,274 m²/h)</button>
+      </div>
+    </section>
 
-        <label>Painel</label>
-        <select id="f-painel"></select>
-
-        <div id="f-preco-manual-wrap" hidden>
-          <label>Preço manual (€/m²)</label>
-          <input id="f-preco-manual" class="mono" placeholder="0.00" />
+    <section class="card linha-form-card">
+      <h2>Adicionar linha manual</h2>
+      <div class="linha-form-grid">
+        <div class="field wide">
+          <label>Descrição</label>
+          <input id="l-descricao" placeholder="ex: MDF HID EZ 18mm" />
         </div>
-
-        <label>Acabamento</label>
-        <select id="f-acabamento"></select>
-
-        <label>Ferragens (€, total)</label>
-        <input id="f-ferragens" class="mono" placeholder="0.00" />
-
-        <label>Tipo de cliente / margem</label>
-        <select id="f-margem"></select>
-
-        <button id="btnAdicionar" class="btn-primary">+ Adicionar artigo</button>
-      </section>
-
-      <!-- Lista + totais -->
-      <section class="results">
-        <div id="listaVazia" class="card empty">Ainda sem artigos. Adiciona o primeiro à esquerda.</div>
-        <div id="listaArtigos"></div>
-
-        <div id="totaisBox" class="totais" hidden></div>
-
-        <div class="acoes">
-          <button id="btnCopiarFicha" class="btn-outline" disabled>⧉ Copiar Ficha de Custo Interno</button>
-          <button id="btnCopiarProposta" class="btn-accent" disabled>⧉ Copiar Proposta Comercial</button>
-          <button id="btnExcel" class="btn-outline" disabled>⭳ Exportar Excel</button>
-          <button id="btnPdf" class="btn-outline" disabled>⭳ Exportar PDF</button>
-          <span id="feedback" class="feedback"></span>
+        <div class="field">
+          <label>Catálogo (opcional)</label>
+          <select id="l-catalogo"><option value="">— preço manual —</option></select>
         </div>
-
-        <div class="acoes acoes-backup">
-          <button id="btnGuardar" class="btn-outline">💾 Guardar orçamento</button>
-          <button id="btnBackupExport" class="btn-outline">↓ Backup (.json)</button>
-          <label class="btn-outline file-label">↑ Importar backup
-            <input type="file" id="btnBackupImport" accept="application/json" hidden />
-          </label>
+        <div class="field">
+          <label>Tipo</label>
+          <select id="l-tipo">
+            <option>Material</option>
+            <option>Ferragens</option>
+            <option>Acabamento</option>
+            <option>MO Fabricação</option>
+            <option>MO Montagem</option>
+            <option>Outro</option>
+          </select>
         </div>
-
-        <div id="guardadosBox" class="card guardados" hidden>
-          <div class="eyebrow small">Orçamentos guardados neste dispositivo</div>
-          <div id="guardadosLista" class="chips"></div>
+        <div class="field">
+          <label>Quantidade</label>
+          <input id="l-qtd" class="mono" placeholder="0.00" />
         </div>
-      </section>
-    </div>
+        <div class="field">
+          <label>Unidade</label>
+          <select id="l-unidade">
+            <option>m²</option><option>ml</option><option>un</option>
+            <option>h</option><option>m³</option><option>kg</option><option>vg</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Custo unitário (€)</label>
+          <input id="l-custo" class="mono" placeholder="0.00" />
+        </div>
+      </div>
+      <button id="btnAdicionarLinha" class="btn-primary">+ Adicionar linha</button>
+    </section>
+
+    <section class="card bulk-card">
+      <div class="eyebrow small">Preencher preço em massa</div>
+      <div class="config-row">
+        <select id="bulkUnidade">
+          <option>m²</option><option>ml</option><option>un</option>
+          <option>h</option><option>m³</option><option>kg</option><option>vg</option>
+        </select>
+        <input id="bulkPreco" class="mono" placeholder="Preço (€)" />
+        <button id="btnBulkAplicar" class="btn-outline">Aplicar a linhas sem preço nesta unidade</button>
+      </div>
+    </section>
+
+    <section class="results">
+      <div id="listaVazia" class="card empty">Ainda sem linhas. Importa um Excel ou adiciona a primeira linha acima.</div>
+
+      <div id="tabelaWrap" class="card tabela-wrap" hidden>
+        <table class="tabela-linhas">
+          <thead>
+            <tr>
+              <th>#</th><th>Descrição</th><th>Tipo</th><th>Qtd</th><th>Unid</th><th>Custo Unit.</th><th>Total</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="tabelaCorpo"></tbody>
+        </table>
+      </div>
+
+      <div id="totaisBox" class="totais" hidden></div>
+
+      <div class="acoes">
+        <button id="btnCopiarFicha" class="btn-outline" disabled>⧉ Copiar Ficha de Custo Interno</button>
+        <button id="btnCopiarProposta" class="btn-accent" disabled>⧉ Copiar Proposta Comercial</button>
+        <button id="btnExcel" class="btn-outline" disabled>⭳ Exportar Excel</button>
+        <button id="btnPdf" class="btn-outline" disabled>⭳ Exportar PDF</button>
+        <span id="feedback" class="feedback"></span>
+      </div>
+
+      <div class="acoes acoes-backup">
+        <button id="btnGuardar" class="btn-outline">💾 Guardar orçamento</button>
+        <button id="btnBackupExport" class="btn-outline">↓ Backup (.json)</button>
+        <label class="btn-outline file-label">↑ Importar backup
+          <input type="file" id="btnBackupImport" accept="application/json" hidden />
+        </label>
+      </div>
+
+      <div id="guardadosBox" class="card guardados" hidden>
+        <div class="eyebrow small">Orçamentos guardados na Google Sheet</div>
+        <div id="guardadosLista" class="chips"></div>
+      </div>
+    </section>
 
     <p class="rodape">
-      Rendimentos: fabrico 1,6243 m²/h · montagem 2,274 m²/h · desperdício 10% · consumíveis 4% ·
-      margem calculada como custo ÷ (1 − margem), nunca custo × (1 + margem).<br/>
-      Os dados ficam guardados apenas neste browser/dispositivo — usa o "Backup (.json)" para levar contigo ou mudar de computador.
+      Desperdício 10% aplicado apenas a linhas "Material" · margem calculada como custo ÷ (1 − margem), nunca custo × (1 + margem).
     </p>
   </div>
 
-  <!-- Área de impressão (usada só para exportar PDF) -->
   <div id="printArea" class="print-area"></div>
 
   <script src="app.js"></script>
