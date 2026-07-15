@@ -113,6 +113,7 @@ h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
 
 .import-map { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
 .import-map-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
+.import-map-grid[hidden] { display: none; }
 .import-map-grid .field label { margin-top: 0; }
 @media (max-width: 900px) { .import-map-grid { grid-template-columns: 1fr 1fr; } }
 .import-preview { overflow-x: auto; margin-bottom: 12px; }
@@ -132,6 +133,7 @@ h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
   position: fixed; inset: 0; background: rgba(42, 36, 32, 0.55);
   display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px;
 }
+.import-modal-backdrop[hidden] { display: none; }
 .import-modal {
   background: var(--white); border-radius: 12px; width: 100%; max-width: 640px;
   max-height: 88vh; display: flex; flex-direction: column; overflow: hidden;
