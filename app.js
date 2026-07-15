@@ -353,10 +353,56 @@ function aplicarPrecoEmMassa() {
 
 // ---------- Importação de Excel (mapa de quantidades) ----------
 
+let importState = null; // { workbook, sheetName, linhas, headerIdx, lastIdx, colDesc, colQtd, colUnid }
+
+const PADROES_DESC = [/descri/, /artigo/, /designa/, /^item$/];
+const PADROES_QTD = [/qtd/, /quant/];
+const PADROES_UNID = [/unid/, /^un\.?$/];
+
+function pontuarLinhaCabecalho(linha) {
+  let pontos = 0;
+  linha.forEach((v) => {
+    const s = (v || "").toString().toLowerCase().trim();
+    if (!s) return;
+    if (PADROES_DESC.some((p) => p.test(s))) pontos += 2;
+    if (PADROES_QTD.some((p) => p.test(s))) pontos += 2;
+    if (PADROES_UNID.some((p) => p.test(s))) pontos += 2;
+    if (/preç|custo|valor/.test(s)) pontos += 1;
+  });
+  return pontos;
+}
+
+function detectarCabecalho(linhas) {
+  let melhorIdx = 0, melhorPontos = -1;
+  const limite = Math.min(linhas.length, 60);
+  for (let i = 0; i < limite; i++) {
+    const p = pontuarLinhaCabecalho(linhas[i]);
+    if (p > melhorPontos) { melhorPontos = p; melhorIdx = i; }
+  }
+  return melhorIdx;
+}
+
+// deteta a última linha "de dados": segue enquanto encontra descrição + quantidade válida;
+// para depois de 3 linhas seguidas que pareçam nota/subtotal/rodapé (sem quantidade válida)
+function detectarFimDados(linhas, headerIdx, colDesc, colQtd) {
+  let vazias = 0;
+  let ultimaValida = headerIdx;
+  for (let i = headerIdx + 1; i < linhas.length; i++) {
+    const desc = (linhas[i][colDesc] || "").toString().trim();
+    const qtdVal = colQtd >= 0 ? num(linhas[i][colQtd]) : 1;
+    const valido = desc && qtdVal > 0;
+    if (valido) { ultimaValida = i; vazias = 0; }
+    else { vazias++; if (vazias >= 3) break; }
+  }
+  return ultimaValida;
+}
+
 function detectarColuna(cabecalho, padroes) {
-  for (let i = 0; i < cabecalho.length; i++) {
-    const v = (cabecalho[i] || "").toString().toLowerCase();
-    if (padroes.some((p) => p.test(v))) return i;
+  for (const p of padroes) {
+    for (let i = 0; i < cabecalho.length; i++) {
+      const v = (cabecalho[i] || "").toString().toLowerCase().trim();
+      if (p.test(v)) return i;
+    }
   }
   return -1;
 }
@@ -365,43 +411,196 @@ function importarExcel(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
-      const wb = XLSX.read(e.target.result, { type: "array" });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const linhas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-
-      let headerIdx = 0;
-      let colDesc = -1, colQtd = -1, colUnid = -1;
-      for (let i = 0; i < Math.min(linhas.length, 5); i++) {
-        colDesc = detectarColuna(linhas[i], [/descri/, /artigo/, /designa/]);
-        colQtd = detectarColuna(linhas[i], [/qtd/, /quant/]);
-        colUnid = detectarColuna(linhas[i], [/unid/, /^un$/]);
-        if (colDesc !== -1) { headerIdx = i; break; }
-      }
-      if (colDesc === -1) { colDesc = 0; colQtd = 1; colUnid = 2; headerIdx = 0; }
-
-      let importadas = 0;
-      for (let i = headerIdx + 1; i < linhas.length; i++) {
-        const row = linhas[i];
-        const descricao = (row[colDesc] || "").toString().trim();
-        if (!descricao) continue;
-        const qtd = colQtd !== -1 ? num(row[colQtd]) : 1;
-        const unidade = colUnid !== -1 ? (row[colUnid] || "un").toString().trim() : "un";
-        state.linhas.push({
-          id: uid(), descricao, tipo: "Material",
-          qtd: qtd > 0 ? qtd : 1,
-          unidade: UNIDADES.includes(unidade) ? unidade : "un",
-          custoUnit: "",
-        });
-        importadas++;
-      }
-      atualizar();
-      mostrarImportStatus(importadas ? `✓ ${importadas} linha(s) importada(s) — falta preencher os preços.` : "Nenhuma linha reconhecida neste ficheiro.");
+      const workbook = XLSX.read(e.target.result, { type: "array" });
+      if (!workbook.SheetNames.length) { mostrarImportStatus("Ficheiro vazio ou ilegível."); return; }
+      importState = { workbook, sheetName: workbook.SheetNames[0] };
+      carregarFolhaImportacao();
+      preencherSelectSheet();
+      mostrarImportStatus("");
+      document.getElementById("importMapWrap").hidden = false;
     } catch (err) {
       mostrarImportStatus("Não foi possível ler este ficheiro.");
     }
   };
   reader.readAsArrayBuffer(file);
 }
+
+function carregarFolhaImportacao() {
+  const ws = importState.workbook.Sheets[importState.sheetName];
+  const linhas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  const headerIdx = detectarCabecalho(linhas);
+  const cabecalho = linhas[headerIdx] || [];
+  let colDesc = detectarColuna(cabecalho, PADROES_DESC);
+  let colQtd = detectarColuna(cabecalho, PADROES_QTD);
+  let colUnid = detectarColuna(cabecalho, PADROES_UNID);
+  if (colDesc === -1) colDesc = cabecalho.length > 1 ? 1 : 0;
+  if (colQtd === -1) colQtd = Math.min(colDesc + 1, cabecalho.length - 1);
+  const lastIdx = detectarFimDados(linhas, headerIdx, colDesc, colQtd);
+
+  importState.linhas = linhas;
+  importState.headerIdx = headerIdx;
+  importState.lastIdx = lastIdx;
+  importState.colDesc = colDesc;
+  importState.colQtd = colQtd;
+  importState.colUnid = colUnid;
+  preencherSelectsMapeamento();
+}
+
+function preencherSelectSheet() {
+  const sel = document.getElementById("mapSheet");
+  sel.innerHTML = importState.workbook.SheetNames.map((n) =>
+    `<option value="${n}" ${n === importState.sheetName ? "selected" : ""}>${n}</option>`
+  ).join("");
+}
+
+function larguraMaxima() {
+  return importState.linhas.reduce((max, l) => Math.max(max, l.length), 1);
+}
+
+function lerMapeamentoAtual() {
+  return {
+    headerIdx: parseInt(document.getElementById("mapHeaderRow").value, 10),
+    lastIdx: parseInt(document.getElementById("mapLastRow").value, 10),
+    colDesc: parseInt(document.getElementById("mapColDesc").value, 10),
+    colQtd: parseInt(document.getElementById("mapColQtd").value, 10),
+    colUnid: parseInt(document.getElementById("mapColUnid").value, 10),
+  };
+}
+
+// reconstrói a lista de linhas candidatas (dentro do intervalo cabeçalho→fim, com descrição não vazia)
+// e reinicia a seleção para "todas marcadas"
+function atualizarPreviewImportacao() {
+  const { headerIdx, lastIdx, colDesc, colQtd, colUnid } = lerMapeamentoAtual();
+  importState.mapeamento = { colDesc, colQtd, colUnid };
+  importState.candidatas = [];
+  for (let i = headerIdx + 1; i <= lastIdx && i < importState.linhas.length; i++) {
+    const desc = (importState.linhas[i][colDesc] || "").toString().trim();
+    if (desc) importState.candidatas.push(i);
+  }
+  importState.selecionadas = new Set(importState.candidatas);
+  document.getElementById("mapFiltro").value = "";
+  renderChecklistImportacao();
+}
+
+function renderChecklistImportacao() {
+  const { colDesc, colQtd, colUnid } = importState.mapeamento;
+  const filtro = (document.getElementById("mapFiltro").value || "").toLowerCase().trim();
+  const box = document.getElementById("importPreview");
+
+  const linhasHtml = importState.candidatas.map((i) => {
+    const row = importState.linhas[i];
+    const desc = (row[colDesc] || "").toString();
+    const qtd = colQtd >= 0 ? (row[colQtd] ?? "") : "";
+    const unid = colUnid >= 0 ? (row[colUnid] ?? "") : "";
+    const marcada = importState.selecionadas.has(i);
+    const oculta = filtro && !desc.toLowerCase().includes(filtro);
+    return `<tr data-idx="${i}" class="${marcada ? "" : "linha-excluida"} ${oculta ? "linha-oculta" : ""}">
+      <td class="col-check"><input type="checkbox" data-row="${i}" ${marcada ? "checked" : ""} /></td>
+      <td>${desc.slice(0, 60)}</td><td>${qtd}</td><td>${unid}</td>
+    </tr>`;
+  }).join("");
+
+  box.innerHTML = `
+    <div class="import-checklist">
+      <table>
+        <thead><tr><th></th><th>Descrição</th><th>Qtd</th><th>Unid</th></tr></thead>
+        <tbody>${linhasHtml || `<tr><td colspan="4" style="text-align:center;color:#8A7F6E;padding:14px">Nenhuma linha encontrada neste intervalo.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+
+  box.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      const idx = parseInt(e.target.dataset.row, 10);
+      if (e.target.checked) importState.selecionadas.add(idx);
+      else importState.selecionadas.delete(idx);
+      e.target.closest("tr").classList.toggle("linha-excluida", !e.target.checked);
+      atualizarContagemImportacao();
+    });
+  });
+
+  atualizarContagemImportacao();
+}
+
+function atualizarContagemImportacao() {
+  document.getElementById("importContagem").innerHTML =
+    `<b>${importState.selecionadas.size}</b> de ${importState.candidatas.length} linha(s) selecionada(s) para importar.`;
+}
+
+function marcarDesmarcarVisiveis(marcar) {
+  const box = document.getElementById("importPreview");
+  box.querySelectorAll("tr[data-idx]:not(.linha-oculta)").forEach((tr) => {
+    const idx = parseInt(tr.dataset.idx, 10);
+    const cb = tr.querySelector("input[type=checkbox]");
+    if (marcar) { importState.selecionadas.add(idx); cb.checked = true; }
+    else { importState.selecionadas.delete(idx); cb.checked = false; }
+    tr.classList.toggle("linha-excluida", !marcar);
+  });
+  atualizarContagemImportacao();
+}
+
+function preencherSelectsMapeamento() {
+  const total = importState.linhas.length;
+  const numLinhasMostrar = Math.min(total, 60);
+  const selHeader = document.getElementById("mapHeaderRow");
+  selHeader.innerHTML = importState.linhas.slice(0, numLinhasMostrar).map((l, i) => {
+    const amostra = l.filter((v) => v !== "").slice(0, 3).join(" | ");
+    return `<option value="${i}" ${i === importState.headerIdx ? "selected" : ""}>Linha ${i + 1}: ${amostra.slice(0, 40) || "(vazia)"}</option>`;
+  }).join("");
+
+  const selLast = document.getElementById("mapLastRow");
+  selLast.innerHTML = importState.linhas.map((l, i) => {
+    const amostra = l.filter((v) => v !== "").slice(0, 3).join(" | ");
+    return `<option value="${i}" ${i === importState.lastIdx ? "selected" : ""}>Linha ${i + 1}: ${amostra.slice(0, 40) || "(vazia)"}</option>`;
+  }).join("");
+
+  const numCols = larguraMaxima();
+  const opcoesColuna = (selecionada, permiteVazio) => {
+    let html = permiteVazio ? `<option value="-1">— nenhuma —</option>` : "";
+    const cab = importState.linhas[importState.headerIdx] || [];
+    for (let c = 0; c < numCols; c++) {
+      const rotulo = (cab[c] || "").toString().trim();
+      html += `<option value="${c}" ${c === selecionada ? "selected" : ""}>${colLetter(c + 1)}${rotulo ? " — " + rotulo.slice(0, 24) : ""}</option>`;
+    }
+    return html;
+  };
+  document.getElementById("mapColDesc").innerHTML = opcoesColuna(importState.colDesc, false);
+  document.getElementById("mapColQtd").innerHTML = opcoesColuna(importState.colQtd, false);
+  document.getElementById("mapColUnid").innerHTML = opcoesColuna(importState.colUnid, true);
+
+  atualizarPreviewImportacao();
+}
+
+function confirmarImportacao() {
+  const { colDesc, colQtd, colUnid } = importState.mapeamento;
+  let importadas = 0;
+  importState.candidatas.forEach((i) => {
+    if (!importState.selecionadas.has(i)) return;
+    const row = importState.linhas[i];
+    const descricao = (row[colDesc] || "").toString().trim();
+    const qtd = colQtd >= 0 ? num(row[colQtd]) : 1;
+    const unidade = colUnid >= 0 ? (row[colUnid] || "un").toString().trim() : "un";
+    state.linhas.push({
+      id: uid(), descricao, tipo: "Material",
+      qtd: qtd > 0 ? qtd : 1,
+      unidade: UNIDADES.includes(unidade) ? unidade : "un",
+      custoUnit: "",
+    });
+    importadas++;
+  });
+  atualizar();
+  document.getElementById("importMapWrap").hidden = true;
+  document.getElementById("fileExcel").value = "";
+  importState = null;
+  mostrarImportStatus(importadas ? `✓ ${importadas} linha(s) importada(s) — falta preencher os preços.` : "Nenhuma linha selecionada.");
+}
+
+function cancelarImportacao() {
+  document.getElementById("importMapWrap").hidden = true;
+  document.getElementById("fileExcel").value = "";
+  importState = null;
+  mostrarImportStatus("");
+}
+
 
 // ---------- Guardar / abrir / novo ----------
 
@@ -448,62 +647,201 @@ async function copiarTexto(texto, etiqueta) {
 
 // ---------- Exportações ----------
 
-function exportarExcel() {
-  const t = calcularTotais();
-  const fichaRows = [
-    ["Ref.", state.referencia, "Cliente", state.cliente, "Data", hoje()], [],
-    ["#", "Descrição", "Tipo", "Qtd", "Unid", "Custo Unit.", "Total"],
-  ];
-  t.linhas.forEach((l, i) => fichaRows.push([i + 1, l.descricao, l.tipo, num(l.qtd), l.unidade, num(l.custoUnit), l.total]));
-  fichaRows.push([]);
-  fichaRows.push(["", "", "", "", "", "SUBTOTAL MATERIAL", t.subtotalMaterial]);
-  fichaRows.push(["", "", "", "", "", "DESPERDÍCIO 10%", t.desperdicio]);
-  if (t.subtotalFerragens) fichaRows.push(["", "", "", "", "", "FERRAGENS", t.subtotalFerragens]);
-  if (t.subtotalAcabamento) fichaRows.push(["", "", "", "", "", "ACABAMENTO", t.subtotalAcabamento]);
-  fichaRows.push(["", "", "", "", "", "MO FABRICAÇÃO", t.moFabricacao]);
-  fichaRows.push(["", "", "", "", "", "MO MONTAGEM", t.moMontagem]);
-  if (t.subtotalOutro) fichaRows.push(["", "", "", "", "", "OUTROS", t.subtotalOutro]);
-  fichaRows.push(["", "", "", "", "", "CUSTO TOTAL PRODUÇÃO", t.custoTotalProducao]);
-  fichaRows.push(["", "", "", "", "", "MARGEM APLICADA", `${(t.margem.valor * 100).toFixed(0)}%`]);
-  fichaRows.push(["", "", "", "", "", "PVP ex-IVA", t.pvpExIva]);
+// ---------- Identidade visual Carpinova (Excel + PDF) ----------
 
-  const desc = state.descricaoGeral || `Fornecimento e montagem de carpintaria — ${state.cliente || ""}`;
-  const propRows = [
-    [`PROPOSTA COMERCIAL — ${state.referencia}`], [`Cliente: ${state.cliente || ""}`],
-    [`Data: ${hoje()}    Validade: ${state.validadeDias} dias`], [],
-    ["Artigo", "Descrição", "Valor ex-IVA"], ["01", desc, t.pvpExIva], [],
-    ["", "TOTAL ex-IVA", t.pvpExIva],
-    ["", state.autoliquidacao ? "IVA (autoliquidação)" : "IVA 23%", state.autoliquidacao ? 0 : t.ivaValor],
-    ["", "TOTAL c/IVA", state.autoliquidacao ? t.pvpExIva : t.totalComIva], [],
-    ["Condições: 40% adjudicação / 40% início / 20% conclusão"],
-  ];
+const COR_NAVY = "1F3864";
+const COR_AZUL = "2E5395";
+const COR_DESTAQUE = "D9E1F2";
+const COR_CINZA_TXT = "666666";
 
-  const wb = XLSX.utils.book_new();
-  const wsFicha = XLSX.utils.aoa_to_sheet(fichaRows);
-  const wsProp = XLSX.utils.aoa_to_sheet(propRows);
-  aplicarFormatoMoeda(wsFicha, [5, 6], fichaRows.length);
-  aplicarFormatoMoeda(wsProp, [2], propRows.length);
-  wsFicha["!cols"] = [{ wch: 4 }, { wch: 28 }, { wch: 14 }, { wch: 8 }, { wch: 6 }, { wch: 22 }, { wch: 12 }];
-  wsProp["!cols"] = [{ wch: 8 }, { wch: 46 }, { wch: 14 }];
-  XLSX.utils.book_append_sheet(wb, wsFicha, "Ficha de Custo Interno");
-  XLSX.utils.book_append_sheet(wb, wsProp, "Proposta Comercial");
-  XLSX.writeFile(wb, `${state.referencia || "orcamento"}.xlsx`);
-  mostrarFeedback("Excel exportado");
+function colLetter(n) {
+  let s = "";
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+function cellAddr(row, col) { return colLetter(col) + row; }
+
+function setCell(ws, addr, value, opts = {}) {
+  const cell = ws.getCell(addr);
+  cell.value = value;
+  cell.font = { name: "Arial", size: opts.size || 10, bold: !!opts.bold, color: { argb: "FF" + (opts.color || "000000") } };
+  if (opts.fill) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + opts.fill } };
+  if (opts.align) cell.alignment = { horizontal: opts.align, vertical: "middle" };
+  if (opts.money) cell.numFmt = '#,##0.00 "€"';
 }
 
-function aplicarFormatoMoeda(ws, cols, numRows) {
-  for (let r = 0; r < numRows; r++) {
-    cols.forEach((c) => {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
-      if (cell && typeof cell.v === "number") cell.z = '#,##0.00 "€"';
-    });
+async function exportarExcel() {
+  const t = calcularTotais();
+  const desc = state.descricaoGeral || `Fornecimento e montagem de carpintaria — ${state.cliente || ""}`;
+  const wb = new ExcelJS.Workbook();
+
+  // ---- Folha CUSTO INTERNO ----
+  const wsF = wb.addWorksheet("CUSTO INTERNO");
+  wsF.mergeCells("A1:G1");
+  setCell(wsF, "A1", `FICHA DE CUSTO INTERNO — ${state.referencia} — ${hoje()}`, { fill: COR_NAVY, color: "FFFFFF", bold: true, size: 13, align: "center" });
+  setCell(wsF, "A3", "Cliente", { bold: true });
+  setCell(wsF, "B3", state.cliente || "");
+  setCell(wsF, "A4", "Âmbito", { bold: true });
+  setCell(wsF, "B4", state.descricaoGeral || "");
+  wsF.mergeCells("A6:G6");
+  setCell(wsF, "A6", "LINHAS DE CUSTO", { fill: COR_AZUL, color: "FFFFFF", bold: true });
+
+  const headerRow = 7;
+  ["ARTIGO", "DESCRIÇÃO", "TIPO", "QTD", "UNID", "CUSTO UNIT.", "TOTAL"].forEach((h, i) => {
+    setCell(wsF, cellAddr(headerRow, i + 1), h, { fill: COR_DESTAQUE, color: COR_NAVY, bold: true });
+  });
+
+  let r = headerRow + 1;
+  t.linhas.forEach((l, i) => {
+    setCell(wsF, cellAddr(r, 1), i + 1);
+    setCell(wsF, cellAddr(r, 2), l.descricao);
+    setCell(wsF, cellAddr(r, 3), l.tipo);
+    setCell(wsF, cellAddr(r, 4), num(l.qtd));
+    setCell(wsF, cellAddr(r, 5), l.unidade);
+    setCell(wsF, cellAddr(r, 6), num(l.custoUnit), { money: true });
+    setCell(wsF, cellAddr(r, 7), l.total, { money: true });
+    r++;
+  });
+  r++;
+
+  const subtotalRows = [["SUBTOTAL MATERIAL", t.subtotalMaterial], ["DESPERDÍCIO 10%", t.desperdicio]];
+  if (t.subtotalFerragens) subtotalRows.push(["FERRAGENS", t.subtotalFerragens]);
+  if (t.subtotalAcabamento) subtotalRows.push(["ACABAMENTO", t.subtotalAcabamento]);
+  subtotalRows.push(["MO FABRICAÇÃO", t.moFabricacao]);
+  subtotalRows.push(["MO MONTAGEM", t.moMontagem]);
+  if (t.subtotalOutro) subtotalRows.push(["OUTROS", t.subtotalOutro]);
+  subtotalRows.forEach(([label, val]) => {
+    setCell(wsF, cellAddr(r, 6), label, { fill: COR_DESTAQUE, bold: true });
+    setCell(wsF, cellAddr(r, 7), val, { fill: COR_DESTAQUE, bold: true, money: true });
+    r++;
+  });
+  r++;
+  wsF.mergeCells(`A${r}:G${r}`);
+  setCell(wsF, cellAddr(r, 1), "RESUMO", { fill: COR_AZUL, color: "FFFFFF", bold: true });
+  r++;
+  setCell(wsF, cellAddr(r, 6), "CUSTO TOTAL PRODUÇÃO", { fill: COR_DESTAQUE, bold: true });
+  setCell(wsF, cellAddr(r, 7), t.custoTotalProducao, { fill: COR_DESTAQUE, bold: true, money: true });
+  r++;
+  setCell(wsF, cellAddr(r, 6), "MARGEM APLICADA", { bold: true });
+  setCell(wsF, cellAddr(r, 7), `${(t.margem.valor * 100).toFixed(0)}%`, { bold: true });
+  r++;
+  setCell(wsF, cellAddr(r, 6), "PVP ex-IVA", { fill: COR_NAVY, color: "FFFFFF", bold: true, size: 11 });
+  setCell(wsF, cellAddr(r, 7), t.pvpExIva, { fill: COR_NAVY, color: "FFFFFF", bold: true, size: 11, money: true });
+
+  wsF.getColumn(1).width = 6; wsF.getColumn(2).width = 30; wsF.getColumn(3).width = 16;
+  wsF.getColumn(4).width = 8; wsF.getColumn(5).width = 7; wsF.getColumn(6).width = 22; wsF.getColumn(7).width = 14;
+
+  // ---- Folha PROPOSTA CLIENTE ----
+  const wsP = wb.addWorksheet("PROPOSTA CLIENTE");
+  wsP.mergeCells("A1:C1");
+  setCell(wsP, "A1", `PROPOSTA COMERCIAL — ${state.referencia}`, { fill: COR_NAVY, color: "FFFFFF", bold: true, size: 13, align: "center" });
+  setCell(wsP, "A3", "Cliente", { bold: true }); setCell(wsP, "B3", state.cliente || "");
+  setCell(wsP, "A4", "Data", { bold: true }); setCell(wsP, "B4", hoje());
+  setCell(wsP, "A5", "Validade", { bold: true }); setCell(wsP, "B5", `${state.validadeDias || "8"} dias`);
+  wsP.mergeCells("A7:C7");
+  setCell(wsP, "A7", "ÂMBITO E VALOR", { fill: COR_AZUL, color: "FFFFFF", bold: true });
+  ["ARTIGO", "DESCRIÇÃO", "VALOR ex-IVA"].forEach((h, i) => setCell(wsP, cellAddr(8, i + 1), h, { fill: COR_DESTAQUE, color: COR_NAVY, bold: true }));
+  setCell(wsP, "A9", "01"); setCell(wsP, "B9", desc); setCell(wsP, "C9", t.pvpExIva, { money: true });
+
+  setCell(wsP, "B11", "TOTAL ex-IVA", { fill: COR_DESTAQUE, bold: true });
+  setCell(wsP, "C11", t.pvpExIva, { fill: COR_DESTAQUE, bold: true, money: true });
+  setCell(wsP, "B12", state.autoliquidacao ? "IVA – Autoliquidação Art.º 2.º n.º 1 al. j) CIVA" : "IVA 23%");
+  setCell(wsP, "C12", state.autoliquidacao ? 0 : t.ivaValor, { money: true });
+  setCell(wsP, "B13", "TOTAL c/IVA", { fill: COR_NAVY, color: "FFFFFF", bold: true, size: 11 });
+  setCell(wsP, "C13", state.autoliquidacao ? t.pvpExIva : t.totalComIva, { fill: COR_NAVY, color: "FFFFFF", bold: true, size: 11, money: true });
+
+  setCell(wsP, "A15", "Condições de pagamento", { bold: true });
+  setCell(wsP, "B15", "40% adjudicação / 40% início / 20% conclusão");
+
+  wsP.mergeCells("A17:C17");
+  setCell(wsP, "A17", "CARPINOVA — Pátio Exímio, Lda", { fill: COR_AZUL, color: "FFFFFF", bold: true });
+  setCell(wsP, "A18", "NIF 518 637 026 | Lugar de Regadias 1, 4705-671 Tadim, Braga", { color: COR_CINZA_TXT, size: 9 });
+  setCell(wsP, "A19", "mariocarvalho@carpinova.pt | +351 911 573 616 | www.carpinova.pt", { color: COR_CINZA_TXT, size: 9 });
+
+  wsP.getColumn(1).width = 22; wsP.getColumn(2).width = 46; wsP.getColumn(3).width = 14;
+
+  try {
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${state.referencia || "orcamento"}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+    mostrarFeedback("Excel exportado");
+  } catch (e) {
+    mostrarAviso("Não foi possível gerar o Excel.");
   }
 }
 
+// ---------- HTML estilizado (para o PDF) ----------
+
+function linhaHtmlTabela(cols) {
+  return `<tr>${cols.map((c) => `<td>${c}</td>`).join("")}</tr>`;
+}
+
+function gerarFichaHtml() {
+  const t = calcularTotais();
+  const linhasHtml = t.linhas.map((l, i) => linhaHtmlTabela([i + 1, l.descricao, l.tipo, num(l.qtd).toFixed(2), l.unidade, eur(num(l.custoUnit)), eur(l.total)])).join("");
+  const extra = [];
+  if (t.subtotalFerragens) extra.push(["FERRAGENS", t.subtotalFerragens]);
+  if (t.subtotalAcabamento) extra.push(["ACABAMENTO", t.subtotalAcabamento]);
+  if (t.subtotalOutro) extra.push(["OUTROS", t.subtotalOutro]);
+  return `
+    <div class="doc-title">FICHA DE CUSTO INTERNO — ${state.referencia} — ${hoje()}</div>
+    <table class="doc-info"><tr><th>Cliente</th><td>${state.cliente || ""}</td></tr><tr><th>Âmbito</th><td>${state.descricaoGeral || ""}</td></tr></table>
+    <div class="doc-section">LINHAS DE CUSTO</div>
+    <table class="doc-table">
+      <thead><tr><th>Artigo</th><th>Descrição</th><th>Tipo</th><th>Qtd</th><th>Unid</th><th>Custo Unit.</th><th>Total</th></tr></thead>
+      <tbody>${linhasHtml}</tbody>
+    </table>
+    <table class="doc-table doc-resumo">
+      <tr class="destaque"><td colspan="6">SUBTOTAL MATERIAL</td><td>${eur(t.subtotalMaterial)}</td></tr>
+      <tr class="destaque"><td colspan="6">DESPERDÍCIO 10%</td><td>${eur(t.desperdicio)}</td></tr>
+      ${extra.map(([label, val]) => `<tr class="destaque"><td colspan="6">${label}</td><td>${eur(val)}</td></tr>`).join("")}
+      <tr class="destaque"><td colspan="6">MÃO DE OBRA FABRICAÇÃO</td><td>${eur(t.moFabricacao)}</td></tr>
+      <tr class="destaque"><td colspan="6">MÃO DE OBRA MONTAGEM</td><td>${eur(t.moMontagem)}</td></tr>
+    </table>
+    <div class="doc-section">RESUMO</div>
+    <table class="doc-table doc-resumo">
+      <tr class="destaque"><td colspan="6">CUSTO TOTAL PRODUÇÃO</td><td>${eur(t.custoTotalProducao)}</td></tr>
+      <tr><td colspan="6">MARGEM APLICADA</td><td>${(t.margem.valor * 100).toFixed(0)}%</td></tr>
+      <tr class="total-final"><td colspan="6">PVP ex-IVA</td><td>${eur(t.pvpExIva)}</td></tr>
+    </table>`;
+}
+
+function gerarPropostaHtml() {
+  const t = calcularTotais();
+  const desc = state.descricaoGeral || `Fornecimento e montagem de carpintaria — ${state.cliente || ""}`;
+  return `
+    <div class="doc-title">PROPOSTA COMERCIAL — ${state.referencia}</div>
+    <table class="doc-info">
+      <tr><th>Cliente</th><td>${state.cliente || ""}</td></tr>
+      <tr><th>Data</th><td>${hoje()}</td></tr>
+      <tr><th>Validade</th><td>${state.validadeDias || "8"} dias</td></tr>
+    </table>
+    <div class="doc-section">ÂMBITO E VALOR</div>
+    <table class="doc-table">
+      <thead><tr><th>Artigo</th><th>Descrição</th><th>Valor ex-IVA</th></tr></thead>
+      <tbody><tr><td>01</td><td>${desc}</td><td>${eur(t.pvpExIva)}</td></tr></tbody>
+    </table>
+    <table class="doc-table doc-resumo">
+      <tr class="destaque"><td colspan="2">TOTAL ex-IVA</td><td>${eur(t.pvpExIva)}</td></tr>
+      <tr><td colspan="2">${state.autoliquidacao ? "IVA – Autoliquidação Art.º 2.º n.º 1 al. j) CIVA" : "IVA 23%"}</td><td>${state.autoliquidacao ? "—" : eur(t.ivaValor)}</td></tr>
+      <tr class="total-final"><td colspan="2">TOTAL c/IVA</td><td>${eur(state.autoliquidacao ? t.pvpExIva : t.totalComIva)}</td></tr>
+    </table>
+    <p class="doc-cond"><b>Condições de pagamento:</b> 40% adjudicação / 40% início / 20% conclusão</p>
+    <div class="doc-footer">
+      <div class="doc-footer-bar">CARPINOVA — Pátio Exímio, Lda</div>
+      <div class="doc-footer-txt">NIF 518 637 026 | Lugar de Regadias 1, 4705-671 Tadim, Braga</div>
+      <div class="doc-footer-txt">mariocarvalho@carpinova.pt | +351 911 573 616 | www.carpinova.pt</div>
+    </div>`;
+}
+
 function exportarPdf() {
-  document.getElementById("printArea").textContent = gerarFichaCusto() + "\n\n" + gerarProposta();
+  document.getElementById("printArea").innerHTML = gerarFichaHtml() + '<div class="doc-pagebreak"></div>' + gerarPropostaHtml();
   window.print();
 }
+
 
 // ---------- Backup ----------
 
@@ -557,6 +895,29 @@ function ligarEventos() {
   document.getElementById("descricaoGeral").addEventListener("input", (e) => { state.descricaoGeral = e.target.value; guardarRascunhoAuto(); });
 
   document.getElementById("fileExcel").addEventListener("change", (e) => { if (e.target.files[0]) importarExcel(e.target.files[0]); });
+  document.getElementById("mapSheet").addEventListener("change", (e) => {
+    importState.sheetName = e.target.value;
+    carregarFolhaImportacao();
+  });
+  document.getElementById("mapHeaderRow").addEventListener("change", (e) => {
+    importState.headerIdx = parseInt(e.target.value, 10);
+    const cab = importState.linhas[importState.headerIdx] || [];
+    importState.colDesc = detectarColuna(cab, PADROES_DESC);
+    importState.colQtd = detectarColuna(cab, PADROES_QTD);
+    importState.colUnid = detectarColuna(cab, PADROES_UNID);
+    if (importState.colDesc === -1) importState.colDesc = cab.length > 1 ? 1 : 0;
+    if (importState.colQtd === -1) importState.colQtd = Math.min(importState.colDesc + 1, cab.length - 1);
+    importState.lastIdx = detectarFimDados(importState.linhas, importState.headerIdx, importState.colDesc, importState.colQtd);
+    preencherSelectsMapeamento();
+  });
+  ["mapLastRow", "mapColDesc", "mapColQtd", "mapColUnid"].forEach((id) => {
+    document.getElementById(id).addEventListener("change", atualizarPreviewImportacao);
+  });
+  document.getElementById("mapFiltro").addEventListener("input", renderChecklistImportacao);
+  document.getElementById("btnMarcarVisiveis").addEventListener("click", () => marcarDesmarcarVisiveis(true));
+  document.getElementById("btnDesmarcarVisiveis").addEventListener("click", () => marcarDesmarcarVisiveis(false));
+  document.getElementById("btnConfirmarImport").addEventListener("click", confirmarImportacao);
+  document.getElementById("btnCancelarImport").addEventListener("click", cancelarImportacao);
   document.getElementById("btnMoFabrico").addEventListener("click", () => adicionarLinhaMO("MO Fabricação", MO_FABRICO_HORA, REND_FABRICO));
   document.getElementById("btnMoMontagem").addEventListener("click", () => adicionarLinhaMO("MO Montagem", MO_MONTAGEM_HORA, REND_MONTAGEM));
   document.getElementById("btnAdicionarLinha").addEventListener("click", adicionarLinhaManual);

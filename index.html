@@ -6,6 +6,7 @@
 <title>Carpinova — Gerador de Orçamentos</title>
 <link rel="stylesheet" href="style.css" />
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 </head>
 <body>
   <div class="grid-bg"></div>
@@ -60,15 +61,40 @@
     <section class="card import-card">
       <h2>Importar mapa de quantidades (Excel)</h2>
       <p class="hint">
-        Aceita um .xlsx/.xls com colunas de Descrição, Quantidade e Unidade (em qualquer ordem —
-        a app tenta identificá-las automaticamente). As linhas entram como "Material" com custo
-        unitário em branco, prontas para preencheres os preços.
+        Aceita um .xlsx/.xls. A app tenta adivinhar a linha de cabeçalho e as colunas de
+        Descrição/Quantidade/Unidade — depois mostra uma pré-visualização para confirmares ou
+        corrigires antes de importar linha a linha.
       </p>
       <div class="config-row">
         <label class="btn-outline file-label">📄 Escolher ficheiro Excel
           <input type="file" id="fileExcel" accept=".xlsx,.xls" hidden />
         </label>
         <span id="importStatus" class="feedback"></span>
+      </div>
+
+      <div id="importMapWrap" class="import-map" hidden>
+        <div class="hint">Confirma a folha, a linha de cabeçalho e as colunas — ajusta se a app adivinhou mal. Depois escolhe em baixo exatamente que linhas queres importar (útil quando o mapa tem outras especialidades misturadas).</div>
+        <div class="import-map-grid">
+          <div class="field"><label>Folha</label><select id="mapSheet"></select></div>
+          <div class="field"><label>Linha de cabeçalho</label><select id="mapHeaderRow"></select></div>
+          <div class="field"><label>Linha final (opcional)</label><select id="mapLastRow"></select></div>
+          <div class="field"><label>Coluna Descrição</label><select id="mapColDesc"></select></div>
+          <div class="field"><label>Coluna Quantidade</label><select id="mapColQtd"></select></div>
+          <div class="field"><label>Coluna Unidade (opcional)</label><select id="mapColUnid"></select></div>
+        </div>
+
+        <div class="config-row import-filtro-row">
+          <input id="mapFiltro" placeholder="Filtrar por palavra (ex: porta, roupeiro, armário) para marcar/desmarcar em massa" />
+          <button id="btnMarcarVisiveis" class="btn-outline">✓ Marcar visíveis</button>
+          <button id="btnDesmarcarVisiveis" class="btn-outline">✕ Desmarcar visíveis</button>
+        </div>
+        <div id="importContagem" class="hint"></div>
+        <div id="importPreview" class="import-preview"></div>
+
+        <div class="config-row">
+          <button id="btnConfirmarImport" class="btn-primary" style="margin-top:0">Importar linhas selecionadas</button>
+          <button id="btnCancelarImport" class="btn-outline">Cancelar</button>
+        </div>
       </div>
     </section>
 
