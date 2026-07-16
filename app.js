@@ -188,29 +188,36 @@ function renderTabela() {
   corpo.innerHTML = state.linhas.map((l, i) => {
     const total = linhaTotal(l);
     const semPreco = num(l.custoUnit) === 0;
+    const descEsc = (l.descricao || "").replace(/"/g, "&quot;");
     return `
-      <tr data-id="${l.id}" class="${semPreco ? "sem-preco" : ""}">
-        <td>${i + 1}</td>
-        <td class="col-desc"><input data-f="descricao" value="${(l.descricao || "").replace(/"/g, "&quot;")}" /></td>
-        <td>
-          <select data-f="tipo">
-            ${["Material", "Ferragens", "Acabamento", "MO Fabricação", "MO Montagem", "Outro"].map((op) => `<option ${op === l.tipo ? "selected" : ""}>${op}</option>`).join("")}
-          </select>
-        </td>
-        <td class="col-num"><input data-f="qtd" class="mono" value="${l.qtd ?? ""}" /></td>
-        <td>
-          <select data-f="unidade">${UNIDADES.map((u) => `<option ${u === l.unidade ? "selected" : ""}>${u}</option>`).join("")}</select>
-        </td>
-        <td class="col-num"><input data-f="custoUnit" class="mono" value="${l.custoUnit ?? ""}" /></td>
-        <td class="col-total">${eur(total)}</td>
-        <td class="col-remove"><button data-remove="${l.id}">✕</button></td>
-      </tr>`;
+      <div class="linha-card ${semPreco ? "sem-preco" : ""}" data-id="${l.id}">
+        <div class="linha-card-desc-row">
+          <span class="linha-card-idx">${String(i + 1).padStart(2, "0")}</span>
+          <input class="linha-card-desc" data-f="descricao" value="${descEsc}" placeholder="Descrição" />
+          <button class="linha-card-remove" data-remove="${l.id}" aria-label="Remover">✕</button>
+        </div>
+        <div class="linha-card-fields">
+          <div class="lc-field">
+            <label>Tipo</label>
+            <select data-f="tipo">
+              ${["Material", "Ferragens", "Acabamento", "MO Fabricação", "MO Montagem", "Outro"].map((op) => `<option ${op === l.tipo ? "selected" : ""}>${op}</option>`).join("")}
+            </select>
+          </div>
+          <div class="lc-field col-num"><label>Qtd</label><input data-f="qtd" class="mono" value="${l.qtd ?? ""}" /></div>
+          <div class="lc-field">
+            <label>Unid</label>
+            <select data-f="unidade">${UNIDADES.map((u) => `<option ${u === l.unidade ? "selected" : ""}>${u}</option>`).join("")}</select>
+          </div>
+          <div class="lc-field col-num"><label>Custo Unit. (€)</label><input data-f="custoUnit" class="mono" value="${l.custoUnit ?? ""}" /></div>
+          <div class="lc-field lc-total"><label>Total</label><div class="lc-total-val">${eur(total)}</div></div>
+        </div>
+      </div>`;
   }).join("");
 
   corpo.querySelectorAll("input, select").forEach((el) => {
     el.addEventListener("input", (e) => {
-      const tr = e.target.closest("tr");
-      const linha = state.linhas.find((l) => l.id === tr.dataset.id);
+      const card = e.target.closest(".linha-card");
+      const linha = state.linhas.find((l) => l.id === card.dataset.id);
       if (linha) { linha[e.target.dataset.f] = e.target.value; atualizar(); }
     });
   });
@@ -561,7 +568,7 @@ function renderGridImportacao() {
     const celulas = [];
     for (let c = 0; c < numCols; c++) {
       const v = (row[c] ?? "").toString();
-      celulas.push(`<td title="${v.replace(/"/g, "&quot;")}">${v.slice(0, 40)}</td>`);
+      celulas.push(`<td>${v.replace(/</g, "&lt;")}</td>`);
     }
 
     return `<tr data-idx="${i}" class="${classes.join(" ")}">
