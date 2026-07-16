@@ -159,6 +159,50 @@
         </div>
       </div>
       <button id="btnAdicionarLinha" class="btn-primary">+ Adicionar linha</button>
+
+      <div class="calc-medidas">
+        <button id="btnToggleCalc" class="link-ajustar">📐 Calcular quantidade a partir de medidas (portas, módulos, painéis)</button>
+        <div id="calcMedidasBox" class="calc-medidas-grid" hidden>
+          <div class="field">
+            <label>Medida padrão</label>
+            <select id="calcPadrao">
+              <option value="">— personalizado —</option>
+              <optgroup label="Portas interiores">
+                <option value="70,200">Porta 70×200 cm</option>
+                <option value="80,200">Porta 80×200 cm</option>
+                <option value="90,200">Porta 90×200 cm</option>
+              </optgroup>
+              <optgroup label="Portas exteriores/entrada">
+                <option value="90,210">Porta entrada 90×210 cm</option>
+                <option value="100,210">Porta entrada 100×210 cm</option>
+              </optgroup>
+              <optgroup label="Módulos de roupeiro/cozinha">
+                <option value="60,240">Módulo 60×240 cm</option>
+                <option value="90,240">Módulo 90×240 cm</option>
+                <option value="100,240">Módulo 100×240 cm</option>
+                <option value="120,240">Módulo 120×240 cm</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="field">
+            <label>Largura (cm)</label>
+            <input id="calcLargura" class="mono" placeholder="0" />
+          </div>
+          <div class="field">
+            <label>Altura (cm)</label>
+            <input id="calcAltura" class="mono" placeholder="0" />
+          </div>
+          <div class="field">
+            <label>Nº de unidades</label>
+            <input id="calcUnidades" class="mono" value="1" />
+          </div>
+          <div class="field calc-resultado-field">
+            <label>Resultado</label>
+            <div id="calcResultado" class="calc-resultado">—</div>
+          </div>
+          <button id="btnCalcularPreencher" class="btn-outline calc-btn">Preencher Quantidade</button>
+        </div>
+      </div>
     </section>
 
     <section class="card bulk-card">

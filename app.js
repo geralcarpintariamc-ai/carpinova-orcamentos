@@ -304,6 +304,43 @@ function atualizarEstadoLigacao() {
 
 // ---------- Ações: linhas ----------
 
+function calcularResultadoMedidas() {
+  const largura = num(document.getElementById("calcLargura").value);
+  const altura = num(document.getElementById("calcAltura").value);
+  const unidades = num(document.getElementById("calcUnidades").value) || 1;
+  const areaUnitaria = (largura / 100) * (altura / 100);
+  const areaTotal = areaUnitaria * unidades;
+  const el = document.getElementById("calcResultado");
+  if (largura > 0 && altura > 0) {
+    el.textContent = `${areaUnitaria.toFixed(2)} m² × ${unidades} = ${areaTotal.toFixed(2)} m²`;
+  } else {
+    el.textContent = "—";
+  }
+  return { areaUnitaria, areaTotal, unidades };
+}
+
+function preencherComCalculo() {
+  const { areaTotal, unidades } = calcularResultadoMedidas();
+  const largura = document.getElementById("calcLargura").value;
+  const altura = document.getElementById("calcAltura").value;
+  if (!(areaTotal > 0)) { mostrarAviso("Indica largura e altura para calcular."); return; }
+
+  const unidadeAtual = document.getElementById("l-unidade").value;
+  const campoQtd = document.getElementById("l-qtd");
+  if (unidadeAtual === "m²") {
+    campoQtd.value = areaTotal.toFixed(2);
+  } else {
+    campoQtd.value = unidades;
+  }
+  // acrescenta a medida à descrição, se ainda não lá estiver
+  const campoDesc = document.getElementById("l-descricao");
+  const medidaTexto = `${largura}×${altura} cm`;
+  if (campoDesc.value && !campoDesc.value.includes(medidaTexto)) {
+    campoDesc.value = `${campoDesc.value} (${medidaTexto})`;
+  }
+  mostrarFeedback(`Quantidade preenchida a partir de ${largura}×${altura} cm`);
+}
+
 function adicionarLinhaManual() {
   const descricao = document.getElementById("l-descricao").value.trim();
   const qtd = document.getElementById("l-qtd").value;
@@ -323,6 +360,11 @@ function adicionarLinhaManual() {
   document.getElementById("l-qtd").value = "";
   document.getElementById("l-custo").value = "";
   document.getElementById("l-catalogo").value = "";
+  document.getElementById("calcLargura").value = "";
+  document.getElementById("calcAltura").value = "";
+  document.getElementById("calcUnidades").value = "1";
+  document.getElementById("calcPadrao").value = "";
+  document.getElementById("calcResultado").textContent = "—";
   atualizar();
 }
 
@@ -925,6 +967,22 @@ function ligarEventos() {
   document.getElementById("btnMoFabrico").addEventListener("click", () => adicionarLinhaMO("MO Fabricação", MO_FABRICO_HORA, REND_FABRICO));
   document.getElementById("btnMoMontagem").addEventListener("click", () => adicionarLinhaMO("MO Montagem", MO_MONTAGEM_HORA, REND_MONTAGEM));
   document.getElementById("btnAdicionarLinha").addEventListener("click", adicionarLinhaManual);
+
+  document.getElementById("btnToggleCalc").addEventListener("click", () => {
+    const box = document.getElementById("calcMedidasBox");
+    box.hidden = !box.hidden;
+  });
+  document.getElementById("calcPadrao").addEventListener("change", (e) => {
+    if (!e.target.value) return;
+    const [l, a] = e.target.value.split(",");
+    document.getElementById("calcLargura").value = l;
+    document.getElementById("calcAltura").value = a;
+    calcularResultadoMedidas();
+  });
+  ["calcLargura", "calcAltura", "calcUnidades"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", calcularResultadoMedidas);
+  });
+  document.getElementById("btnCalcularPreencher").addEventListener("click", preencherComCalculo);
   document.getElementById("btnBulkAplicar").addEventListener("click", aplicarPrecoEmMassa);
 
   document.getElementById("btnNovo").addEventListener("click", novoOrcamento);
