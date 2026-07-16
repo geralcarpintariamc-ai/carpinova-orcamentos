@@ -73,23 +73,22 @@
     </section>
 
     <div id="importModalBackdrop" class="import-modal-backdrop" hidden>
-      <div class="import-modal">
+      <div class="import-modal import-modal-wide">
         <div class="import-modal-header">
           <div>
             <div class="import-modal-title">Escolher itens a importar</div>
             <div id="importResumo" class="import-modal-resumo"></div>
           </div>
-          <button id="btnFecharModal" class="modal-close" aria-label="Fechar">✕</button>
+          <div class="import-modal-header-right">
+            <div class="field" style="margin:0"><label>Folha</label><select id="mapSheet"></select></div>
+            <button id="btnFecharModal" class="modal-close" aria-label="Fechar">✕</button>
+          </div>
         </div>
 
-        <button id="btnToggleAjustar" class="link-ajustar">⚙ A app enganou-se? Ajustar folha/colunas</button>
-        <div id="importAjustar" class="import-map-grid" hidden>
-          <div class="field"><label>Folha</label><select id="mapSheet"></select></div>
-          <div class="field"><label>Linha de cabeçalho</label><select id="mapHeaderRow"></select></div>
-          <div class="field"><label>Linha final (opcional)</label><select id="mapLastRow"></select></div>
-          <div class="field"><label>Coluna Descrição</label><select id="mapColDesc"></select></div>
-          <div class="field"><label>Coluna Quantidade</label><select id="mapColQtd"></select></div>
-          <div class="field"><label>Coluna Unidade (opcional)</label><select id="mapColUnid"></select></div>
+        <div class="hint import-instrucoes">
+          👆 Clica no <b>número de uma linha</b> para marcares onde começa a tabela (cabeçalho — fica com ★).
+          Depois escolhe por baixo de cada letra de coluna o que ela representa. As linhas seguintes ganham uma
+          caixa para escolheres o que entra.
         </div>
 
         <div class="config-row import-filtro-row">

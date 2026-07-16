@@ -112,22 +112,28 @@ h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
 .mo-card .field { min-width: 120px; }
 
 .import-map { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
-.import-map-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
-.import-map-grid[hidden] { display: none; }
-.import-map-grid .field label { margin-top: 0; }
-@media (max-width: 900px) { .import-map-grid { grid-template-columns: 1fr 1fr; } }
 .import-preview { overflow-x: auto; margin-bottom: 12px; }
-.import-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.import-preview th { text-align: left; background: #F6E3D3; color: var(--amber-text); padding: 5px 7px; font-weight: 700; }
-.import-preview td { padding: 4px 7px; border-bottom: 1px solid #EEE; }
-.import-checklist { max-height: 340px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
-.import-checklist table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.import-checklist thead th { position: sticky; top: 0; background: #F6E3D3; color: var(--amber-text); text-align: left; padding: 6px 8px; z-index: 1; }
-.import-checklist td { padding: 4px 8px; border-bottom: 1px solid #EEE; }
-.import-checklist tr.linha-excluida { opacity: 0.4; text-decoration: line-through; }
-.import-checklist tr.linha-oculta { display: none; }
-.import-checklist td.col-check { width: 28px; text-align: center; }
 .import-filtro-row input { flex: 1; }
+.import-modal-wide { max-width: 920px; }
+.import-modal-header-right { display: flex; align-items: flex-start; gap: 10px; }
+.import-modal-header-right .field { min-width: 130px; }
+.import-modal-header-right select { font-size: 12.5px; padding: 6px 8px; }
+.import-instrucoes { padding: 10px 20px 0; }
+
+.import-grid-wrap { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.import-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+.import-grid th, .import-grid td { border: 1px solid #EEE; padding: 3px 6px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.import-grid thead th { position: sticky; top: 0; background: #F6E3D3; z-index: 2; padding: 4px 6px; }
+.import-grid thead .th-letter { font-weight: 700; color: var(--amber-text); text-align: center; }
+.import-grid thead select { width: 100%; font-size: 11px; padding: 2px 4px; margin-top: 2px; }
+.import-grid .col-rownum { position: sticky; left: 0; background: #FAF8F4; z-index: 1; text-align: center; cursor: pointer; font-weight: 600; color: var(--ink-soft); min-width: 30px; }
+.import-grid .col-rownum:hover { background: var(--amber-bg); color: var(--amber-text); }
+.import-grid tr.is-header .col-rownum { background: var(--amber); color: #fff; }
+.import-grid tr.is-header td { background: #FBF0DE; font-weight: 700; }
+.import-grid .col-check { position: sticky; left: 30px; background: #FAF8F4; z-index: 1; text-align: center; min-width: 26px; }
+.import-grid tr.linha-excluida td:not(.col-rownum):not(.col-check) { opacity: 0.4; text-decoration: line-through; }
+.import-grid tr.linha-oculta { display: none; }
+.import-grid tr.linha-antes-cabecalho td { color: var(--ink-faint); }
 
 .import-modal-backdrop {
   position: fixed; inset: 0; background: rgba(42, 36, 32, 0.55);
@@ -150,15 +156,9 @@ h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; }
   padding: 4px 8px; line-height: 1;
 }
 .modal-close:hover { color: var(--ink); }
-.link-ajustar {
-  background: none; border: none; color: var(--ink-soft); font-size: 12px; cursor: pointer;
-  text-align: left; padding: 12px 20px 0; text-decoration: underline; text-underline-offset: 2px;
-}
-.link-ajustar:hover { color: var(--amber-text); }
-.import-modal .import-map-grid { padding: 10px 20px 0; margin-bottom: 4px; }
 .import-modal .import-filtro-row { padding: 12px 20px 0; }
 .import-modal .import-preview { padding: 10px 20px 0; flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-.import-modal .import-checklist { flex: 1; max-height: none; }
+.import-modal .import-grid-wrap { flex: 1; max-height: none; }
 .import-modal-footer {
   display: flex; justify-content: space-between; align-items: center;
   padding: 14px 20px; border-top: 1px solid var(--line); background: #FAF8F4;

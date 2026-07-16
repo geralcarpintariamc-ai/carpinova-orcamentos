@@ -353,11 +353,12 @@ function aplicarPrecoEmMassa() {
 
 // ---------- Importação de Excel (mapa de quantidades) ----------
 
-let importState = null; // { workbook, sheetName, linhas, headerIdx, lastIdx, colDesc, colQtd, colUnid }
+let importState = null; // { workbook, sheetName, linhas, headerIdx, colRoles, selecionadas, fileName }
 
 const PADROES_DESC = [/descri/, /artigo/, /designa/, /^item$/];
 const PADROES_QTD = [/qtd/, /quant/];
 const PADROES_UNID = [/unid/, /^un\.?$/];
+const MAX_COLS_GRELHA = 14;
 
 function pontuarLinhaCabecalho(linha) {
   let pontos = 0;
@@ -380,19 +381,6 @@ function detectarCabecalho(linhas) {
     if (p > melhorPontos) { melhorPontos = p; melhorIdx = i; }
   }
   return melhorIdx;
-}
-
-// deteta a última linha "de dados": segue enquanto encontra descrição + quantidade válida;
-// para depois de 3 linhas seguidas que pareçam nota/subtotal/rodapé (sem quantidade válida)
-function detectarFimDados(linhas, headerIdx, colDesc, colQtd) {
-  let ultimaValida = headerIdx;
-  for (let i = headerIdx + 1; i < linhas.length; i++) {
-    const desc = (linhas[i][colDesc] || "").toString().trim();
-    const qtdVal = colQtd >= 0 ? num(linhas[i][colQtd]) : 1;
-    const valido = desc && qtdVal > 0;
-    if (valido) ultimaValida = i;
-  }
-  return ultimaValida;
 }
 
 function detectarColuna(cabecalho, padroes) {
@@ -423,11 +411,9 @@ function importarExcel(file) {
       const workbook = XLSX.read(e.target.result, { type: "array" });
       if (!workbook.SheetNames.length) { mostrarImportStatus("Ficheiro vazio ou ilegível."); return; }
       importState = { workbook, sheetName: melhorFolha(workbook), fileName: file.name };
-      carregarFolhaImportacao();
       preencherSelectSheet();
+      carregarFolhaImportacao();
       mostrarImportStatus("");
-      document.getElementById("importAjustar").hidden = true;
-      document.getElementById("btnToggleAjustar").textContent = "⚙ A app enganou-se? Ajustar folha/colunas";
       document.getElementById("importModalBackdrop").hidden = false;
     } catch (err) {
       mostrarImportStatus("Não foi possível ler este ficheiro.");
@@ -436,6 +422,15 @@ function importarExcel(file) {
   reader.readAsArrayBuffer(file);
 }
 
+function preencherSelectSheet() {
+  const sel = document.getElementById("mapSheet");
+  sel.innerHTML = importState.workbook.SheetNames.map((n) =>
+    `<option value="${n}" ${n === importState.sheetName ? "selected" : ""}>${n}</option>`
+  ).join("");
+}
+
+// (re)carrega a folha escolhida: deteta cabeçalho e papéis de coluna automaticamente,
+// depois desenha a grelha completa do ficheiro para seleção manual
 function carregarFolhaImportacao() {
   const ws = importState.workbook.Sheets[importState.sheetName];
   const linhas = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
@@ -446,81 +441,119 @@ function carregarFolhaImportacao() {
   let colUnid = detectarColuna(cabecalho, PADROES_UNID);
   if (colDesc === -1) colDesc = cabecalho.length > 1 ? 1 : 0;
   if (colQtd === -1) colQtd = Math.min(colDesc + 1, cabecalho.length - 1);
-  const lastIdx = detectarFimDados(linhas, headerIdx, colDesc, colQtd);
+
+  const numCols = Math.min(linhas.reduce((max, l) => Math.max(max, l.length), 1), MAX_COLS_GRELHA);
+  const colRoles = new Array(numCols).fill(null);
+  if (colDesc >= 0 && colDesc < numCols) colRoles[colDesc] = "desc";
+  if (colQtd >= 0 && colQtd < numCols) colRoles[colQtd] = "qtd";
+  if (colUnid >= 0 && colUnid < numCols) colRoles[colUnid] = "unid";
 
   importState.linhas = linhas;
+  importState.numCols = numCols;
   importState.headerIdx = headerIdx;
-  importState.lastIdx = lastIdx;
-  importState.colDesc = colDesc;
-  importState.colQtd = colQtd;
-  importState.colUnid = colUnid;
-  preencherSelectsMapeamento();
+  importState.colRoles = colRoles;
+  recalcularCandidatas();
+  renderGridImportacao();
 }
 
-function preencherSelectSheet() {
-  const sel = document.getElementById("mapSheet");
-  sel.innerHTML = importState.workbook.SheetNames.map((n) =>
-    `<option value="${n}" ${n === importState.sheetName ? "selected" : ""}>${n}</option>`
-  ).join("");
+function colComPapel(papel) {
+  return importState.colRoles.findIndex((r) => r === papel);
 }
 
-function larguraMaxima() {
-  return importState.linhas.reduce((max, l) => Math.max(max, l.length), 1);
-}
-
-function lerMapeamentoAtual() {
-  return {
-    headerIdx: parseInt(document.getElementById("mapHeaderRow").value, 10),
-    lastIdx: parseInt(document.getElementById("mapLastRow").value, 10),
-    colDesc: parseInt(document.getElementById("mapColDesc").value, 10),
-    colQtd: parseInt(document.getElementById("mapColQtd").value, 10),
-    colUnid: parseInt(document.getElementById("mapColUnid").value, 10),
-  };
-}
-
-// reconstrói a lista de linhas candidatas (dentro do intervalo cabeçalho→fim, com descrição não vazia)
-// e reinicia a seleção para "todas marcadas"
-function atualizarPreviewImportacao() {
-  const { headerIdx, lastIdx, colDesc, colQtd, colUnid } = lerMapeamentoAtual();
-  importState.mapeamento = { colDesc, colQtd, colUnid };
+// recalcula quais linhas (depois do cabeçalho) têm valor na coluna Descrição —
+// essas ganham checkbox; reinicia a seleção para "todas marcadas"
+function recalcularCandidatas() {
+  const colDesc = colComPapel("desc");
   importState.candidatas = [];
-  for (let i = headerIdx + 1; i <= lastIdx && i < importState.linhas.length; i++) {
-    const desc = (importState.linhas[i][colDesc] || "").toString().trim();
-    if (desc) importState.candidatas.push(i);
+  if (colDesc >= 0) {
+    for (let i = importState.headerIdx + 1; i < importState.linhas.length; i++) {
+      const desc = (importState.linhas[i][colDesc] || "").toString().trim();
+      if (desc) importState.candidatas.push(i);
+    }
   }
   importState.selecionadas = new Set(importState.candidatas);
   document.getElementById("mapFiltro").value = "";
   document.getElementById("importResumo").textContent =
-    `${importState.fileName || "ficheiro"} — folha "${importState.sheetName}", ${importState.candidatas.length} item(ns) encontrados a partir da linha ${headerIdx + 2}.`;
-  renderChecklistImportacao();
+    `${importState.fileName || "ficheiro"} — folha "${importState.sheetName}", ${importState.candidatas.length} item(ns) encontrados a partir da linha ${importState.headerIdx + 2}.`;
 }
 
-function renderChecklistImportacao() {
-  const { colDesc, colQtd, colUnid } = importState.mapeamento;
-  const filtro = (document.getElementById("mapFiltro").value || "").toLowerCase().trim();
+function renderGridImportacao() {
   const box = document.getElementById("importPreview");
+  const { linhas, headerIdx, colRoles, numCols, candidatas, selecionadas } = importState;
+  const colDesc = colComPapel("desc");
+  const filtro = (document.getElementById("mapFiltro").value || "").toLowerCase().trim();
+  const setCandidatas = new Set(candidatas);
 
-  const linhasHtml = importState.candidatas.map((i) => {
-    const row = importState.linhas[i];
-    const desc = (row[colDesc] || "").toString();
-    const qtd = colQtd >= 0 ? (row[colQtd] ?? "") : "";
-    const unid = colUnid >= 0 ? (row[colUnid] ?? "") : "";
-    const marcada = importState.selecionadas.has(i);
-    const oculta = filtro && !desc.toLowerCase().includes(filtro);
-    return `<tr data-idx="${i}" class="${marcada ? "" : "linha-excluida"} ${oculta ? "linha-oculta" : ""}">
-      <td class="col-check"><input type="checkbox" data-row="${i}" ${marcada ? "checked" : ""} /></td>
-      <td>${desc.slice(0, 60)}</td><td>${qtd}</td><td>${unid}</td>
+  const rotuloPapel = { desc: "Descrição", qtd: "Quantidade", unid: "Unidade" };
+  const theadCols = [];
+  for (let c = 0; c < numCols; c++) {
+    theadCols.push(`
+      <th>
+        <div class="th-letter">${colLetter(c + 1)}</div>
+        <select data-col-role="${c}">
+          <option value="">—</option>
+          <option value="desc" ${colRoles[c] === "desc" ? "selected" : ""}>Descrição</option>
+          <option value="qtd" ${colRoles[c] === "qtd" ? "selected" : ""}>Quantidade</option>
+          <option value="unid" ${colRoles[c] === "unid" ? "selected" : ""}>Unidade</option>
+        </select>
+      </th>`);
+  }
+
+  const linhasHtml = linhas.map((row, i) => {
+    const ehCabecalho = i === headerIdx;
+    const ehCandidata = setCandidatas.has(i);
+    const marcada = ehCandidata && selecionadas.has(i);
+    const descTexto = colDesc >= 0 ? (row[colDesc] || "").toString().toLowerCase() : "";
+    const oculta = ehCandidata && filtro && !descTexto.includes(filtro);
+
+    let classes = [];
+    if (ehCabecalho) classes.push("is-header");
+    if (i < headerIdx) classes.push("linha-antes-cabecalho");
+    if (ehCandidata && !marcada) classes.push("linha-excluida");
+    if (oculta) classes.push("linha-oculta");
+
+    const check = ehCandidata
+      ? `<input type="checkbox" data-row="${i}" ${marcada ? "checked" : ""} />`
+      : "";
+
+    const celulas = [];
+    for (let c = 0; c < numCols; c++) {
+      const v = (row[c] ?? "").toString();
+      celulas.push(`<td title="${v.replace(/"/g, "&quot;")}">${v.slice(0, 40)}</td>`);
+    }
+
+    return `<tr data-idx="${i}" class="${classes.join(" ")}">
+      <td class="col-rownum" data-setheader="${i}">${i + 1}${ehCabecalho ? " ★" : ""}</td>
+      <td class="col-check">${check}</td>
+      ${celulas.join("")}
     </tr>`;
   }).join("");
 
   box.innerHTML = `
-    <div class="import-checklist">
-      <table>
-        <thead><tr><th></th><th>Descrição</th><th>Qtd</th><th>Unid</th></tr></thead>
-        <tbody>${linhasHtml || `<tr><td colspan="4" style="text-align:center;color:#8A7F6E;padding:14px">Nenhuma linha encontrada neste intervalo.</td></tr>`}</tbody>
+    <div class="import-grid-wrap">
+      <table class="import-grid">
+        <thead><tr><th></th><th></th>${theadCols.join("")}</tr></thead>
+        <tbody>${linhasHtml}</tbody>
       </table>
     </div>`;
 
+  box.querySelectorAll("[data-setheader]").forEach((td) => {
+    td.addEventListener("click", () => {
+      importState.headerIdx = parseInt(td.dataset.setheader, 10);
+      recalcularCandidatas();
+      renderGridImportacao();
+    });
+  });
+  box.querySelectorAll("[data-col-role]").forEach((sel) => {
+    sel.addEventListener("change", (e) => {
+      const c = parseInt(e.target.dataset.colRole, 10);
+      const papel = e.target.value || null;
+      if (papel) importState.colRoles = importState.colRoles.map((r, i) => (i === c ? papel : r === papel ? null : r));
+      else importState.colRoles[c] = null;
+      recalcularCandidatas();
+      renderGridImportacao();
+    });
+  });
   box.querySelectorAll("input[type=checkbox]").forEach((cb) => {
     cb.addEventListener("change", (e) => {
       const idx = parseInt(e.target.dataset.row, 10);
@@ -542,8 +575,9 @@ function atualizarContagemImportacao() {
 function marcarDesmarcarVisiveis(marcar) {
   const box = document.getElementById("importPreview");
   box.querySelectorAll("tr[data-idx]:not(.linha-oculta)").forEach((tr) => {
-    const idx = parseInt(tr.dataset.idx, 10);
     const cb = tr.querySelector("input[type=checkbox]");
+    if (!cb) return;
+    const idx = parseInt(tr.dataset.idx, 10);
     if (marcar) { importState.selecionadas.add(idx); cb.checked = true; }
     else { importState.selecionadas.delete(idx); cb.checked = false; }
     tr.classList.toggle("linha-excluida", !marcar);
@@ -551,40 +585,10 @@ function marcarDesmarcarVisiveis(marcar) {
   atualizarContagemImportacao();
 }
 
-function preencherSelectsMapeamento() {
-  const total = importState.linhas.length;
-  const numLinhasMostrar = Math.min(total, 60);
-  const selHeader = document.getElementById("mapHeaderRow");
-  selHeader.innerHTML = importState.linhas.slice(0, numLinhasMostrar).map((l, i) => {
-    const amostra = l.filter((v) => v !== "").slice(0, 3).join(" | ");
-    return `<option value="${i}" ${i === importState.headerIdx ? "selected" : ""}>Linha ${i + 1}: ${amostra.slice(0, 40) || "(vazia)"}</option>`;
-  }).join("");
-
-  const selLast = document.getElementById("mapLastRow");
-  selLast.innerHTML = importState.linhas.map((l, i) => {
-    const amostra = l.filter((v) => v !== "").slice(0, 3).join(" | ");
-    return `<option value="${i}" ${i === importState.lastIdx ? "selected" : ""}>Linha ${i + 1}: ${amostra.slice(0, 40) || "(vazia)"}</option>`;
-  }).join("");
-
-  const numCols = larguraMaxima();
-  const opcoesColuna = (selecionada, permiteVazio) => {
-    let html = permiteVazio ? `<option value="-1">— nenhuma —</option>` : "";
-    const cab = importState.linhas[importState.headerIdx] || [];
-    for (let c = 0; c < numCols; c++) {
-      const rotulo = (cab[c] || "").toString().trim();
-      html += `<option value="${c}" ${c === selecionada ? "selected" : ""}>${colLetter(c + 1)}${rotulo ? " — " + rotulo.slice(0, 24) : ""}</option>`;
-    }
-    return html;
-  };
-  document.getElementById("mapColDesc").innerHTML = opcoesColuna(importState.colDesc, false);
-  document.getElementById("mapColQtd").innerHTML = opcoesColuna(importState.colQtd, false);
-  document.getElementById("mapColUnid").innerHTML = opcoesColuna(importState.colUnid, true);
-
-  atualizarPreviewImportacao();
-}
-
 function confirmarImportacao() {
-  const { colDesc, colQtd, colUnid } = importState.mapeamento;
+  const colDesc = colComPapel("desc");
+  const colQtd = colComPapel("qtd");
+  const colUnid = colComPapel("unid");
   let importadas = 0;
   importState.candidatas.forEach((i) => {
     if (!importState.selecionadas.has(i)) return;
@@ -912,33 +916,12 @@ function ligarEventos() {
     importState.sheetName = e.target.value;
     carregarFolhaImportacao();
   });
-  document.getElementById("mapHeaderRow").addEventListener("change", (e) => {
-    importState.headerIdx = parseInt(e.target.value, 10);
-    const cab = importState.linhas[importState.headerIdx] || [];
-    importState.colDesc = detectarColuna(cab, PADROES_DESC);
-    importState.colQtd = detectarColuna(cab, PADROES_QTD);
-    importState.colUnid = detectarColuna(cab, PADROES_UNID);
-    if (importState.colDesc === -1) importState.colDesc = cab.length > 1 ? 1 : 0;
-    if (importState.colQtd === -1) importState.colQtd = Math.min(importState.colDesc + 1, cab.length - 1);
-    importState.lastIdx = detectarFimDados(importState.linhas, importState.headerIdx, importState.colDesc, importState.colQtd);
-    preencherSelectsMapeamento();
-  });
-  ["mapLastRow", "mapColDesc", "mapColQtd", "mapColUnid"].forEach((id) => {
-    document.getElementById(id).addEventListener("change", atualizarPreviewImportacao);
-  });
-  document.getElementById("mapFiltro").addEventListener("input", renderChecklistImportacao);
+  document.getElementById("mapFiltro").addEventListener("input", renderGridImportacao);
   document.getElementById("btnMarcarVisiveis").addEventListener("click", () => marcarDesmarcarVisiveis(true));
   document.getElementById("btnDesmarcarVisiveis").addEventListener("click", () => marcarDesmarcarVisiveis(false));
   document.getElementById("btnConfirmarImport").addEventListener("click", confirmarImportacao);
   document.getElementById("btnCancelarImport").addEventListener("click", cancelarImportacao);
   document.getElementById("btnFecharModal").addEventListener("click", cancelarImportacao);
-  document.getElementById("btnToggleAjustar").addEventListener("click", () => {
-    const painel = document.getElementById("importAjustar");
-    painel.hidden = !painel.hidden;
-    document.getElementById("btnToggleAjustar").textContent = painel.hidden
-      ? "⚙ A app enganou-se? Ajustar folha/colunas"
-      : "⚙ Esconder ajustes";
-  });
   document.getElementById("btnMoFabrico").addEventListener("click", () => adicionarLinhaMO("MO Fabricação", MO_FABRICO_HORA, REND_FABRICO));
   document.getElementById("btnMoMontagem").addEventListener("click", () => adicionarLinhaMO("MO Montagem", MO_MONTAGEM_HORA, REND_MONTAGEM));
   document.getElementById("btnAdicionarLinha").addEventListener("click", adicionarLinhaManual);
